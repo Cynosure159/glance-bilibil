@@ -122,16 +122,23 @@ func (h *Handler) VideosHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cacheTTL := 300 // 默认 5 分钟
+	if cStr := query.Get("cache"); cStr != "" {
+		if c, err := strconv.Atoi(cStr); err == nil && c >= 0 {
+			cacheTTL = c
+		}
+	}
+
 	// 检查是否有临时指定的单个 mid
 	var videos models.VideoList
 	var err error
 
 	if mid := query.Get("mid"); mid != "" {
 		// 单个 UP 主模式
-		videos, err = h.service.FetchChannelVideos(mid, limit)
+		videos, err = h.service.FetchChannelVideos(mid, limit, cacheTTL)
 	} else {
 		// 多 UP 主汇总模式
-		videos, err = h.service.FetchAllVideos(limit)
+		videos, err = h.service.FetchAllVideos(limit, cacheTTL)
 	}
 
 	if err != nil {
@@ -176,13 +183,20 @@ func (h *Handler) JSONHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cacheTTL := 300
+	if cStr := query.Get("cache"); cStr != "" {
+		if c, err := strconv.Atoi(cStr); err == nil && c >= 0 {
+			cacheTTL = c
+		}
+	}
+
 	var videos models.VideoList
 	var err error
 
 	if mid := query.Get("mid"); mid != "" {
-		videos, err = h.service.FetchChannelVideos(mid, limit)
+		videos, err = h.service.FetchChannelVideos(mid, limit, cacheTTL)
 	} else {
-		videos, err = h.service.FetchAllVideos(limit)
+		videos, err = h.service.FetchAllVideos(limit, cacheTTL)
 	}
 
 	if err != nil {
@@ -253,6 +267,7 @@ func (h *Handler) HelpHandler(w http.ResponseWriter, r *http.Request) {
 		<tr><td>limit</td><td>` + strconv.Itoa(h.defaultLimit) + `</td><td>显示视频数量</td></tr>
 		<tr><td>style</td><td>` + h.defaultStyle + `</td><td>样式: horizontal-cards/grid-cards/vertical-list</td></tr>
 		<tr><td>mid</td><td>-</td><td>临时指定单个 UP 主 UID</td></tr>
+		<tr><td>cache</td><td>300</td><td>缓存时间（秒），0 为禁用</td></tr>
 	</table>
 	
 	<h2>示例</h2>

@@ -56,6 +56,7 @@ go build -o glance-bilibil .
   - `limit`: 显示视频数量 (默认: 25)。
   - `style`: 显示样式: `horizontal-cards` (默认), `grid-cards`, `vertical-list`。
   - `mid`: 临时指定单个 UP 主 MID 进行过滤。
+  - `cache`: 缓存时间（秒），默认 300s（5分钟）。设置为 0 禁用。
   - `collapse-after`: 垂直列表在 N 个项目后折叠 (默认: 7)。
   - `collapse-after-rows`: 网格布局在 N 行后折叠 (默认: 4)。
 - `GET /json` : 聚合后的视频原始数据 (JSON)
