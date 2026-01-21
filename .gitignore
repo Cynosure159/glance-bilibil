@@ -3,19 +3,28 @@
 *.exe~
 *.dll
 *.so
-*.dylib
-
 # OS files
 .DS_Store
 Thumbs.db
 
-# IDE files
-.idea/
+# IDE 和编辑器
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
 
-# Project specific
-glance-bilibil
+# 构建产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 配置文件（包含敏感信息）
 config/config.json
+
+# 开发文档（不上传到仓库）
+PRD.md
+doc/
 doc
