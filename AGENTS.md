@@ -99,6 +99,8 @@ type Video struct {
 | limit | 25 (flag) | 显示视频数量 |
 | style | horizontal-cards | 样式: horizontal-cards/grid-cards/vertical-list |
 | mid | - | 临时指定单个 UP 主 |
+| collapse-after | 7 | 垂直列表折叠阈值 |
+| collapse-after-rows | 4 | 网格布局折叠行数阈值 |
 
 ---
 

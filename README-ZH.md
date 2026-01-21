@@ -1,10 +1,16 @@
-# 🎬 glance-bilibil
+<p align="center">
+  <h1 align="center">🎬 glance-bilibil</h1>
+  <p align="center">
+    一个为 <a href="https://github.com/glanceapp/glance">Glance</a> 开发的 Bilibili 视频汇总展示插件
+    <br />
+    <a href="./README.md">English</a> · <a href="#-快速开始">快速开始</a> · <a href="https://github.com/glanceapp/glance">Glance</a>
+  </p>
+</p>
 
-一个为 [Glance](https://github.com/glanceapp/glance) 开发的 Bilibili 视频汇总展示插件。支持多 UP 主配置、时间轴排序汇总以及完善的风控绕过机制。
-
-[English Document](./README.md) · [快速开始](#-快速开始) · [Glance 集成](#-glance-集成)
-
----
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go" alt="Go Version" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" />
+</p>
 
 ## ✨ 功能特性
 
@@ -13,8 +19,6 @@
 - 🛡️ **稳定风控绕过**：实现 WBI 签名、动态 `buvid` 获取及 `dm` 参数模拟，绕过 B 站防爬虫机制。
 - 🎨 **多种显示样式**：支持轮播 (Default)、网格 (Grid) 和垂直列表 (Vertical List)。
 - ⚙️ **配置灵活**：支持配置文件及 URL 参数即时覆盖设置。
-
----
 
 ## 🚀 快速开始
 
@@ -36,9 +40,6 @@
 go build -o glance-bilibil .
 ./glance-bilibil -config config/config.json -port 8082 -limit 25
 ```
-
----
-
 ## 🔗 Glance 集成
 
 在你的 `glance.yml` 中添加以下扩展配置：
@@ -50,12 +51,15 @@ go build -o glance-bilibil .
   cache: 5m
 ```
 
-### API 接口
+## 📡 API 接口
 - `GET /` : 渲染后的视频列表 HTML (供 Glance 嵌入)
+  - `limit`: 显示视频数量 (默认: 25)。
+  - `style`: 显示样式: `horizontal-cards` (默认), `grid-cards`, `vertical-list`。
+  - `mid`: 临时指定单个 UP 主 MID 进行过滤。
+  - `collapse-after`: 垂直列表在 N 个项目后折叠 (默认: 7)。
+  - `collapse-after-rows`: 网格布局在 N 行后折叠 (默认: 4)。
 - `GET /json` : 聚合后的视频原始数据 (JSON)
 - `GET /help` : 使用说明与当前配置详情
-
----
 
 ## 🏗️ 系统架构
 
@@ -63,8 +67,6 @@ go build -o glance-bilibil .
 - **API 层**: `internal/api/handler.go` - HTTP 路由与处理。
 - **服务层**: `internal/service/video_service.go` - 并发汇总与排序算法。
 - **平台层**: `internal/platform/bilibili.go` - Bilibili API 客户端与 WBI 签名。
-
----
 
 ## 📜 许可证
 

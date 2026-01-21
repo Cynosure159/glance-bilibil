@@ -1,10 +1,16 @@
-# 🎬 glance-bilibil
+<p align="center">
+  <h1 align="center">🎬 glance-bilibil</h1>
+  <p align="center">
+    A <a href="https://github.com/glanceapp/glance">Glance</a> extension widget to display Bilibili video feeds
+    <br />
+    <a href="./README-ZH.md">中文文档</a> · <a href="#-quick-start">Quick Start</a> · <a href="https://github.com/glanceapp/glance">Glance</a>
+  </p>
+</p>
 
-A [Glance](https://github.com/glanceapp/glance) extension widget to display Bilibili video feeds. Supports multiple UPs, aggregated sorting, and anti-crawling bypass.
-
-[中文文档](./README-ZH.md) · [Quick Start](#-quick-start) · [Glance Integration](#-glance-integration)
-
----
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go" alt="Go Version" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" />
+</p>
 
 ## ✨ Features
 
@@ -13,8 +19,6 @@ A [Glance](https://github.com/glanceapp/glance) extension widget to display Bili
 - 🛡️ **Risk Control Bypass**: Implements WBI signing, dynamic `buvid` retrieval, and `dm` parameter simulation for stable access.
 - 🎨 **Visual Styles**: Multiple rendering styles (Carousel, Grid, Vertical List).
 - ⚙️ **Flexible Config**: Easy configuration via `config.json` with URL parameter overrides.
-
----
 
 ## 🚀 Quick Start
 
@@ -35,9 +39,6 @@ Build and start the application:
 go build -o glance-bilibil .
 ./glance-bilibil -config config/config.json -port 8082 -limit 25
 ```
-
----
-
 ## 🔗 Glance Integration
 
 Add the extension to your `glance.yml`:
@@ -49,12 +50,15 @@ Add the extension to your `glance.yml`:
   cache: 5m
 ```
 
-### API Endpoints
+## 📡 API Endpoints
 - `GET /` : Rendered video list (HTML Widget)
+  - `limit`: Number of videos to display (default: 25).
+  - `style`: Visual style: `horizontal-cards` (default), `grid-cards`, `vertical-list`.
+  - `mid`: Temporarily filter by a specific UP master MID.
+  - `collapse-after`: Collapse vertical list after N items (default: 7).
+  - `collapse-after-rows`: Collapse grid after N rows (default: 4).
 - `GET /json` : Aggregated video data (JSON)
 - `GET /help` : Configuration help and UP info
-
----
 
 ## 🏗️ Architecture
 
@@ -62,8 +66,6 @@ The project follows a layered design for maintainability:
 - **API Layer**: `internal/api/handler.go` - HTTP routing.
 - **Service Layer**: `internal/service/video_service.go` - Business logic and concurrency.
 - **Platform Layer**: `internal/platform/bilibili.go` - Bilibili API interaction.
-
----
 
 ## 📜 License
 
