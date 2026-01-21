@@ -2,7 +2,6 @@
 package platform
 
 import (
-	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -133,17 +132,19 @@ func (wk *WbiKeys) Sign(params url.Values) (url.Values, error) {
 	return signedParams, nil
 }
 
-// removeUnwantedChars 过滤掉 WBI 签名不允许的特殊字符
+// removeUnwantedChars 过滤掉 WBI 签名不允许的特殊字符: ! ' ( ) *
 func removeUnwantedChars(v url.Values) url.Values {
-	encoded := v.Encode()
-	chars := []byte{'!', '\'', '(', ')', '*'}
-	b := []byte(encoded)
-	for _, c := range chars {
-		b = bytes.ReplaceAll(b, []byte{c}, nil)
-	}
-	result, err := url.ParseQuery(string(b))
-	if err != nil {
-		return v
+	result := make(url.Values)
+	for k, vs := range v {
+		newVs := make([]string, len(vs))
+		for i, val := range vs {
+			s := val
+			for _, char := range []string{"!", "'", "(", ")", "*"} {
+				s = strings.ReplaceAll(s, char, "")
+			}
+			newVs[i] = s
+		}
+		result[k] = newVs
 	}
 	return result
 }
