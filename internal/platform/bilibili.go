@@ -3,14 +3,15 @@ package platform
 
 import (
 	"fmt"
-	"glance-bilibil/internal/models"
-	"log"
 	"math/rand"
 	"net/url"
 	"regexp"
 	"strconv"
 	"sync"
 	"time"
+
+	"glance-bilibil/internal/logger"
+	"glance-bilibil/internal/models"
 )
 
 // bilibiliResponse 用于解析 Bilibili API 响应
@@ -123,7 +124,10 @@ func (c *BilibiliClient) ensureBuvid() error {
 
 	c.buvid3 = buvidResp.Data.B3
 	c.buvid4 = buvidResp.Data.B4
-	log.Printf("[INFO] 获取 buvid 成功")
+	logger.Debugw("获取 buvid 成功",
+		"buvid3", c.buvid3[:8]+"...",
+		"buvid4", c.buvid4[:8]+"...",
+	)
 
 	return nil
 }

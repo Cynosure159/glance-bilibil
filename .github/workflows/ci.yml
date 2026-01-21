@@ -26,5 +26,8 @@ jobs:
           exit 1
         fi
 
+    - name: Test
+      run: go test -v ./...
+
     - name: Build
       run: go build -v ./...

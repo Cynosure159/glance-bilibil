@@ -2,8 +2,9 @@
 package worker
 
 import (
-	"log"
 	"sync"
+
+	"glance-bilibil/internal/logger"
 )
 
 // Task 任务接口
@@ -35,7 +36,9 @@ func NewPool(workerCount int) *Pool {
 // Start 启动 Worker Pool
 func (p *Pool) Start() {
 	p.once.Do(func() {
-		log.Printf("[INFO] Worker Pool 启动，Worker 数量: %d", p.workerCount)
+		logger.Infow("Worker Pool 启动",
+			"worker_count", p.workerCount,
+		)
 
 		for i := 0; i < p.workerCount; i++ {
 			p.wg.Add(1)
@@ -50,7 +53,10 @@ func (p *Pool) worker(id int) {
 
 	for task := range p.taskQueue {
 		if err := task.Execute(); err != nil {
-			log.Printf("[WARN] Worker %d 执行任务失败: %v", id, err)
+			logger.Warnw("Worker 执行任务失败",
+				"worker_id", id,
+				"error", err,
+			)
 		}
 	}
 }
@@ -64,7 +70,7 @@ func (p *Pool) Submit(task Task) {
 func (p *Pool) Stop() {
 	close(p.taskQueue)
 	p.wg.Wait()
-	log.Printf("[INFO] Worker Pool 已停止")
+	logger.Info("Worker Pool 已停止")
 }
 
 // WaitWithCallback 等待所有任务完成后执行回调

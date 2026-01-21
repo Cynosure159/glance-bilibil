@@ -5,12 +5,12 @@ import (
 	"embed"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 
 	"glance-bilibil/internal/api"
 	"glance-bilibil/internal/config"
+	"glance-bilibil/internal/logger"
 	"glance-bilibil/internal/service"
 )
 
@@ -18,6 +18,10 @@ import (
 var templatesFS embed.FS
 
 func main() {
+	// 初始化日志系统
+	logger.AutoInit()
+	defer logger.Sync()
+
 	// 解析命令行参数
 	configPath := flag.String("config", "", "配置文件路径")
 	port := flag.Int("port", 8082, "HTTP 服务端口")
@@ -27,26 +31,30 @@ func main() {
 	// 加载配置
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("加载配置失败: %v", err)
+		logger.Fatalw("加载配置失败", "error", err)
 	}
 
-	log.Printf("[INFO] 配置加载成功: %d 个 UP 主", len(cfg.Channels))
+	logger.Infow("配置加载成功",
+		"up_count", len(cfg.Channels),
+	)
 
 	// 创建服务
 	svc := service.NewVideoService(cfg)
 
 	// 初始化（获取 WBI 密钥等）
-	log.Println("[INFO] 正在初始化...")
+	logger.Info("正在初始化...")
 	if err := svc.Initialize(); err != nil {
-		log.Printf("[WARN] 初始化警告: %v (将在首次请求时重试)", err)
+		logger.Warnw("初始化警告 (将在首次请求时重试)",
+			"error", err,
+		)
 	} else {
-		log.Println("[INFO] 初始化成功")
+		logger.Info("初始化成功")
 	}
 
 	// 创建处理器 (默认展示样式固定为 horizontal-cards)
 	handler, err := api.NewHandler(svc, templatesFS, *limit)
 	if err != nil {
-		log.Fatalf("创建处理器失败: %v", err)
+		logger.Fatalw("创建处理器失败", "error", err)
 	}
 
 	// 注册路由
@@ -57,10 +65,13 @@ func main() {
 
 	// 启动服务
 	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("[INFO] 服务启动在 http://localhost%s", addr)
+	logger.Infow("服务启动",
+		"address", fmt.Sprintf("http://localhost%s", addr),
+		"port", *port,
+	)
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Printf("[ERROR] 服务器错误: %v", err)
+		logger.Errorw("服务器错误", "error", err)
 		os.Exit(1)
 	}
 }

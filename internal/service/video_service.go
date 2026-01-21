@@ -2,11 +2,11 @@
 package service
 
 import (
-	"log"
 	"sync"
 	"time"
 
 	"glance-bilibil/internal/config"
+	"glance-bilibil/internal/logger"
 	"glance-bilibil/internal/models"
 	"glance-bilibil/internal/platform"
 	"glance-bilibil/internal/worker"
@@ -70,7 +70,11 @@ func (t *fetchTask) Execute() error {
 
 	// 如果缓存存在且未过期，直接使用
 	if exists && time.Since(entry.updatedAt) < time.Duration(t.cacheTTLSeconds)*time.Second {
-		log.Printf("[DEBUG] %s 命中有效缓存", t.channel.Name)
+		logger.Debugw("命中有效缓存",
+			"up_name", t.channel.Name,
+			"up_mid", t.channel.Mid,
+			"cached", true,
+		)
 		t.resultChan <- entry.videos
 		return nil
 	}
@@ -78,10 +82,17 @@ func (t *fetchTask) Execute() error {
 	// 2. 缓存不存在或已过期，从 API 获取
 	videos, err := t.service.client.FetchUserVideos(t.channel.Mid, t.limit, t.channel.Name)
 	if err != nil {
-		log.Printf("[WARN] 获取 %s (%s) 视频失败: %v", t.channel.Name, t.channel.Mid, err)
+		logger.Warnw("获取视频失败",
+			"up_name", t.channel.Name,
+			"up_mid", t.channel.Mid,
+			"error", err,
+		)
 		// 容错降级：如果 API 失败且有旧缓存，返回旧缓存
 		if exists {
-			log.Printf("[INFO] %s API 失败，返回过期缓存数据", t.channel.Name)
+			logger.Infow("API 失败，返回过期缓存数据",
+				"up_name", t.channel.Name,
+				"cached", true,
+			)
 			t.resultChan <- entry.videos
 		}
 		return err
@@ -95,7 +106,12 @@ func (t *fetchTask) Execute() error {
 	}
 	t.service.mu.Unlock()
 
-	log.Printf("[INFO] 获取 %s (%s) 视频成功: %d 个", t.channel.Name, t.channel.Mid, len(videos))
+	logger.Infow("获取视频成功",
+		"up_name", t.channel.Name,
+		"up_mid", t.channel.Mid,
+		"video_count", len(videos),
+		"cached", false,
+	)
 	t.resultChan <- videos
 	return nil
 }

@@ -4,13 +4,13 @@ package api
 import (
 	"embed"
 	"html/template"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"encoding/json"
 	"glance-bilibil/internal/config"
+	"glance-bilibil/internal/logger"
 	"glance-bilibil/internal/models"
 	"glance-bilibil/internal/service"
 )
@@ -156,7 +156,9 @@ func (h *Handler) VideosHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		log.Printf("[ERROR] 获取视频失败: %v", err)
+		logger.Errorw("获取视频失败",
+			"error", err,
+		)
 		http.Error(w, "获取视频失败: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -185,7 +187,10 @@ func (h *Handler) VideosHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Widget-Content-Frameless", frameless)
 	if err := tmpl.Execute(w, data); err != nil {
-		log.Printf("[ERROR] 渲染模板失败: %v", err)
+		logger.Errorw("渲染模板失败",
+			"error", err,
+			"style", style,
+		)
 		http.Error(w, "渲染失败", http.StatusInternalServerError)
 	}
 }
@@ -218,7 +223,9 @@ func (h *Handler) JSONHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		log.Printf("[ERROR] 获取视频失败: %v", err)
+		logger.Errorw("获取视频失败",
+			"error", err,
+		)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -252,7 +259,9 @@ func (h *Handler) HelpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.templates["help"].Execute(w, data); err != nil {
-		log.Printf("[ERROR] 渲染帮助页面失败: %v", err)
+		logger.Errorw("渲染帮助页面失败",
+			"error", err,
+		)
 		http.Error(w, "渲染失败", http.StatusInternalServerError)
 	}
 }
