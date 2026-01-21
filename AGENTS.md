@@ -83,6 +83,17 @@ type Video struct {
 | 模板 | Go Template (embed) |
 | 鉴权 | WBI 签名 |
 | 并发 | Worker Pool (10 workers) |
+| 测试 | Go Testing (单元测试覆盖核心逻辑) |
+
+---
+
+## 🧪 单元测试
+
+### 测试覆盖范围
+- **Models**: `VideoList` 的排序与切片逻辑。
+- **Worker**: Worker Pool 的并发执行、生命周期管理与错误容错。
+- **Platform (WBI)**: 签名算法正确性及特殊字符过滤逻辑。
+- **API (Handler)**: 相对时间计算逻辑。
 
 ---
 
@@ -182,6 +193,9 @@ glance-bilibil/
 - [x] **HTTP 连接池优化**（2026-01-21）
 - [x] **Worker Pool 并发控制**（2026-01-21）
 - [x] **智能重试策略**（2026-01-21）
+- [x] **核心模块单元测试**（2026-01-21）
+  - 实现 Models, Worker, WBI 等模块测试
+  - 修复 WBI 特殊字符过滤 Bug
 
 ### 待办
 - [ ] Docker 支持
