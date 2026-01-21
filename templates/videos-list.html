@@ -2,7 +2,8 @@
 <ul class="list list-gap-14 collapsible-container" data-collapse-after="{{ .CollapseAfter }}">
     {{- range .Videos }}
     <li class="flex thumbnail-parent gap-10 items-center">
-        <img class="video-horizontal-list-thumbnail thumbnail" loading="lazy" src="{{ .ThumbnailUrl }}" alt="">
+        <img class="video-horizontal-list-thumbnail thumbnail" loading="lazy" src="{{ .ThumbnailUrl }}" alt=""
+            referrerpolicy="no-referrer">
         <div class="min-width-0">
             <a class="block text-truncate color-primary-if-not-visited" href="{{ .Url | safeURL }}" target="_blank"
                 rel="noreferrer">{{ .Title }}</a>

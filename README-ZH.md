@@ -19,7 +19,7 @@
 ## 🚀 快速开始
 
 ### 1. 准备配置
-在项目根目录创建 `config.json`:
+在项目根目录创建 `config/config.json`:
 ```json
 {
   "port": 8082,
@@ -37,7 +37,7 @@
 编译并启动：
 ```bash
 go build -o glance-bilibil .
-./glance-bilibil -config config.json
+./glance-bilibil -config config/config.json
 ```
 
 ---

@@ -80,17 +80,28 @@ func (c *Config) Validate() error {
 
 // getDefaultConfigPath 获取默认配置文件路径
 func getDefaultConfigPath() string {
-	// 优先使用环境变量
+	// 1. 优先使用环境变量
 	if path := os.Getenv("CONFIG_PATH"); path != "" {
 		return path
 	}
 
-	// 默认路径
-	exe, err := os.Executable()
-	if err != nil {
-		return "config.json"
+	// 2. 检查当前工作目录
+	defaultName := filepath.Join("config", "config.json")
+	if _, err := os.Stat(defaultName); err == nil {
+		return defaultName
 	}
-	return filepath.Join(filepath.Dir(exe), "config.json")
+
+	// 3. 检查可执行文件所在目录
+	exe, err := os.Executable()
+	if err == nil {
+		path := filepath.Join(filepath.Dir(exe), "config", "config.json")
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	// 4. 回退到默认值
+	return defaultName
 }
 
 // Save 保存配置到文件

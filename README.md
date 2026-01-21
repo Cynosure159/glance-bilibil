@@ -19,7 +19,7 @@ A [Glance](https://github.com/glanceapp/glance) extension widget to display Bili
 ## 🚀 Quick Start
 
 ### 1. Configure Creators
-Create a `config.json` in the project root:
+Create a `config/config.json` in the project root:
 ```json
 {
   "port": 8082,
@@ -36,7 +36,7 @@ Create a `config.json` in the project root:
 Build and start the application:
 ```bash
 go build -o glance-bilibil .
-./glance-bilibil -config config.json
+./glance-bilibil -config config/config.json
 ```
 
 ---

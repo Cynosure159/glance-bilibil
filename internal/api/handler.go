@@ -71,15 +71,15 @@ func relativeTime(t time.Time) string {
 	case duration < time.Minute:
 		return "刚刚"
 	case duration < time.Hour:
-		return strconv.Itoa(int(duration.Minutes())) + " 分钟前"
+		return strconv.Itoa(int(duration.Minutes())) + "m"
 	case duration < 24*time.Hour:
-		return strconv.Itoa(int(duration.Hours())) + " 小时前"
+		return strconv.Itoa(int(duration.Hours())) + "h"
 	case duration < 30*24*time.Hour:
-		return strconv.Itoa(int(duration.Hours()/24)) + " 天前"
+		return strconv.Itoa(int(duration.Hours()/24)) + "d"
 	case duration < 365*24*time.Hour:
-		return strconv.Itoa(int(duration.Hours()/24/30)) + " 个月前"
+		return strconv.Itoa(int(duration.Hours()/24/30)) + "mo"
 	default:
-		return strconv.Itoa(int(duration.Hours()/24/365)) + " 年前"
+		return strconv.Itoa(int(duration.Hours()/24/365)) + "y"
 	}
 }
 
@@ -148,6 +148,10 @@ func (h *Handler) VideosHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Widget-Title", "Bilibili")
+	w.Header().Set("Widget-Title-URL", "https://www.bilibili.com")
+	w.Header().Set("Widget-Content-Type", "html")
+	w.Header().Set("Widget-Content-Frameless", "true")
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("[ERROR] 渲染模板失败: %v", err)
 		http.Error(w, "渲染失败", http.StatusInternalServerError)

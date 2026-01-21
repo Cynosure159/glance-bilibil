@@ -41,15 +41,6 @@ func (s *VideoService) FetchAllVideos(limit int) (models.VideoList, error) {
 		limit = s.config.Limit
 	}
 
-	// 每个 UP 主获取的视频数（确保汇总后有足够的视频）
-	perChannelLimit := limit
-	if len(s.config.Channels) > 1 {
-		perChannelLimit = limit / len(s.config.Channels)
-		if perChannelLimit < 5 {
-			perChannelLimit = 5
-		}
-	}
-
 	// 并发获取
 	var wg sync.WaitGroup
 	videoChan := make(chan models.VideoList, len(s.config.Channels))
@@ -60,7 +51,8 @@ func (s *VideoService) FetchAllVideos(limit int) (models.VideoList, error) {
 		go func(ch config.ChannelInfo) {
 			defer wg.Done()
 
-			videos, err := s.client.FetchUserVideos(ch.Mid, perChannelLimit, ch.Name)
+			// 每个 UP 主都获取 limit 个视频，以确保排序后的全局前 limit 个视频是准确的
+			videos, err := s.client.FetchUserVideos(ch.Mid, limit, ch.Name)
 			if err != nil {
 				log.Printf("[WARN] 获取 %s (%s) 视频失败: %v", ch.Name, ch.Mid, err)
 				errChan <- err

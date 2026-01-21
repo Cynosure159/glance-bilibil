@@ -58,7 +58,7 @@ type Video struct {
 ```
 
 **环境变量**：
-- `CONFIG_PATH`: 配置文件路径（默认 `./config.json`）
+- `CONFIG_PATH`: 配置文件路径（默认 `./config/config.json`）
 
 ### Glance 集成
 ```yaml
@@ -119,7 +119,8 @@ type Video struct {
 ```
 glance-bilibil/
 ├── main.go                    # 入口
-├── config.json                # 配置文件
+├── config/                    # 配置目录
+│   └── config.json            # 配置文件
 ├── go.mod                     # Go 模块
 ├── internal/
 │   ├── api/handler.go         # HTTP 处理器
