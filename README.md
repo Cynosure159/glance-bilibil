@@ -8,6 +8,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Cynosure159/glance-bilibil/actions/workflows/ci.yml">
+    <img src="https://github.com/Cynosure159/glance-bilibil/actions/workflows/ci.yml/badge.svg" alt="CI Status" />
+  </a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go" alt="Go Version" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" />
 </p>
