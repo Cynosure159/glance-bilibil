@@ -10,9 +10,17 @@ import (
 	"time"
 
 	"encoding/json"
+	"glance-bilibil/internal/config"
 	"glance-bilibil/internal/models"
 	"glance-bilibil/internal/service"
 )
+
+// HelpData 帮助页面模板数据
+type HelpData struct {
+	Channels     []config.ChannelInfo
+	DefaultLimit int
+	DefaultStyle string
+}
 
 // Handler HTTP 处理器
 type Handler struct {
@@ -65,6 +73,12 @@ func NewHandler(svc *service.VideoService, templatesFS embed.FS, defaultLimit in
 
 	h.templates["vertical-list"], err = template.New("videos-list.html").Funcs(funcMap).ParseFS(
 		templatesFS, "templates/videos-list.html")
+	if err != nil {
+		return nil, err
+	}
+
+	h.templates["help"], err = template.New("help.html").Funcs(funcMap).ParseFS(
+		templatesFS, "templates/help.html")
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +179,11 @@ func (h *Handler) VideosHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Widget-Title", "Bilibili")
 	w.Header().Set("Widget-Title-URL", "https://www.bilibili.com")
 	w.Header().Set("Widget-Content-Type", "html")
-	w.Header().Set("Widget-Content-Frameless", "true")
+	frameless := "true"
+	if style == "vertical-list" {
+		frameless = "false"
+	}
+	w.Header().Set("Widget-Content-Frameless", frameless)
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("[ERROR] 渲染模板失败: %v", err)
 		http.Error(w, "渲染失败", http.StatusInternalServerError)
@@ -227,57 +245,14 @@ func (h *Handler) HelpHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := h.service.GetConfig()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	// 构建 UP 主列表
-	channelList := ""
-	for _, ch := range cfg.Channels {
-		channelList += "<li>" + ch.Name + " (mid: " + ch.Mid + ")</li>"
-	}
-	if channelList == "" {
-		channelList = "<li>未配置 UP 主</li>"
+	data := HelpData{
+		Channels:     cfg.Channels,
+		DefaultLimit: h.defaultLimit,
+		DefaultStyle: h.defaultStyle,
 	}
 
-	html := `<!DOCTYPE html>
-<html>
-<head>
-	<title>glance-bilibil</title>
-	<style>
-		body { font-family: system-ui, sans-serif; max-width: 800px; margin: 50px auto; padding: 0 20px; }
-		h1 { color: #00a1d6; }
-		code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
-		table { border-collapse: collapse; width: 100%%; margin: 20px 0; }
-		th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-		th { background: #f8f8f8; }
-	</style>
-</head>
-<body>
-	<h1>🎬 glance-bilibil</h1>
-	<p>为 <a href="https://github.com/glanceapp/glance">glance</a> 开发的 Bilibili 视频扩展插件。</p>
-	
-	<h2>已配置的 UP 主</h2>
-	<ul>` + channelList + `</ul>
-	
-	<h2>使用方法</h2>
-	<p><code>GET /</code> - 获取所有 UP 主的视频汇总 HTML（供 Glance 嵌入）</p>
-	<p><code>GET /json</code> - 获取所有 UP 主的视频汇总 JSON</p>
-	<p><code>GET /help</code> - 本帮助说明页</p>
-
-	<h2>参数说明</h2>
-	<table>
-		<tr><th>参数</th><th>默认值</th><th>说明</th></tr>
-		<tr><td>limit</td><td>` + strconv.Itoa(h.defaultLimit) + `</td><td>显示视频数量</td></tr>
-		<tr><td>style</td><td>` + h.defaultStyle + `</td><td>样式: horizontal-cards/grid-cards/vertical-list</td></tr>
-		<tr><td>mid</td><td>-</td><td>临时指定单个 UP 主 UID</td></tr>
-		<tr><td>cache</td><td>300</td><td>缓存时间（秒），0 为禁用</td></tr>
-	</table>
-	
-	<h2>示例</h2>
-	<ul>
-		<li><a href="/">/</a> - 所有 UP 主视频汇总</li>
-		<li><a href="/json">/json</a> - 获取 JSON 格式视频汇总</li>
-		<li><a href="/?limit=10&style=grid">/?limit=10&style=grid</a></li>
-		<li><a href="/?mid=946974&limit=5">/?mid=946974&limit=5</a> - 单个 UP</li>
-	</ul>
-</body>
-</html>`
-	w.Write([]byte(html))
+	if err := h.templates["help"].Execute(w, data); err != nil {
+		log.Printf("[ERROR] 渲染帮助页面失败: %v", err)
+		http.Error(w, "渲染失败", http.StatusInternalServerError)
+	}
 }

@@ -78,9 +78,11 @@ type Video struct {
 | 组件 | 技术 |
 |------|------|
 | 语言 | Go 1.21+ |
-| HTTP | 标准库 net/http |
+| Web框架 | Gin (新增) |
+| HTTP客户端 | Resty v2 (连接池 + 重试) |
 | 模板 | Go Template (embed) |
 | 鉴权 | WBI 签名 |
+| 并发 | Worker Pool (10 workers) |
 
 ---
 
@@ -113,7 +115,26 @@ type Video struct {
 - **dm 参数**: 模拟浏览器行为
 - **w_webid**: 从用户空间页面解析获取
 
-### 并发处理
+### HTTP 优化（新增）
+**全局单例 Resty 客户端** (`internal/platform/http_client.go`)
+- **连接池配置**
+  - `MaxIdleConns`: 100 （最大空闲连接）
+  - `MaxIdleConnsPerHost`: 10 （每个 Host 最大空闲连接）
+  - `IdleConnTimeout`: 90s （空闲连接超时）
+- **智能重试策略**
+  - 重试次数: 3 次
+  - 重试等待: 1s - 5s （指数退避）
+  - 重试条件: 网络错误、5xx 错误、429 限流
+- **优势**: TCP 连接复用，减少握手开销，提升性能
+
+### 并发处理（优化）
+**Worker Pool 模式** (`internal/worker/pool.go`)
+- 默认 10 个 Worker，限制并发数量
+- 任务队列缓冲：Worker 数量的 2 倍
+- **优势**: 防止突发流量耗尽系统资源
+- **应用场景**: Service 层获取多个 UP 主视频
+
+**原有并发机制**
 - 使用 goroutine 并发获取多个 UP 主的视频
 - WaitGroup 同步，channel 收集结果
 - 单个失败不影响其他 UP 主
@@ -133,9 +154,12 @@ glance-bilibil/
 │   ├── models/models.go       # 数据结构
 │   ├── platform/
 │   │   ├── bilibili.go        # Bilibili 客户端
-│   │   └── wbi.go             # WBI 签名
-│   └── service/
-│       └── video_service.go   # 业务逻辑
+│   │   ├── wbi.go             # WBI 签名
+│   │   └── http_client.go     # HTTP 客户端（新增）
+│   ├── service/
+│   │   └── video_service.go   # 业务逻辑
+│   └── worker/
+│       └── pool.go            # Worker Pool（新增）
 ├── templates/                 # HTML 模板
 │   ├── videos.html
 │   ├── videos-grid.html
@@ -155,11 +179,13 @@ glance-bilibil/
 - [x] WBI 签名与风控绕过
 - [x] 三种展示样式
 - [x] 配置文件支持
+- [x] **HTTP 连接池优化**（2026-01-21）
+- [x] **Worker Pool 并发控制**（2026-01-21）
+- [x] **智能重试策略**（2026-01-21）
 
 ### 待办
 - [ ] Docker 支持
 - [ ] Glance 集成测试
-- [ ] 缓存机制
 
 ---
 

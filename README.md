@@ -25,6 +25,10 @@
 - 🛡️ **Risk Control Bypass**: Implements WBI signing, dynamic `buvid` retrieval, and `dm` parameter simulation for stable access.
 - 🎨 **Visual Styles**: Multiple rendering styles (Carousel, Grid, Vertical List).
 - ⚙️ **Flexible Config**: Easy configuration via `config.json` with URL parameter overrides.
+- ⚡ **Performance Optimizations**:
+  - HTTP connection pooling for reduced TCP handshake overhead
+  - Worker pool concurrency control (default 10 workers) to prevent resource exhaustion
+  - Smart retry strategy with exponential backoff for network resilience
 
 ## 🚀 Quick Start
 
