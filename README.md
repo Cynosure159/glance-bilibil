@@ -1,54 +1,73 @@
-# glance-bilibil
+# 🎬 glance-bilibil
 
-为 [glance](https://github.com/glanceapp/glance) 开发的 Bilibili 视频汇总展示插件。
+A [Glance](https://github.com/glanceapp/glance) extension widget to display Bilibili video feeds. Supports multiple UPs, aggregated sorting, and anti-crawling bypass.
 
-## 功能特性
+[中文文档](./README-ZH.md) · [Quick Start](#-quick-start) · [Glance Integration](#-glance-integration)
 
-- ✅ **多 UP 主支持**：通过 `config.json` 配置多个感兴趣的 UP 主。
-- ✅ **自动汇总**：并发获取所有配置 UP 主的视频，并按发布时间排序。
-- ✅ **风控绕过**：实现 WBI 签名、buvid 获取及 dm 参数模拟，稳定获取数据。
-- ✅ **多种样式**：支持默认轮播、网格布局和垂直列表。
-- ✅ **配置灵活**：支持配置文件及 URL 参数覆盖。
+---
 
-## 快速开始
+## ✨ Features
 
-### 1. 准备配置
-创建 `config.json`:
+- 👤 **Multi-UP Support**: Monitor multiple Bilibili creators via a single config.
+- 🕒 **Chronological Aggregation**: Automatically sorts videos from all configured UPs by post time.
+- 🛡️ **Risk Control Bypass**: Implements WBI signing, dynamic `buvid` retrieval, and `dm` parameter simulation for stable access.
+- 🎨 **Visual Styles**: Multiple rendering styles (Carousel, Grid, Vertical List).
+- ⚙️ **Flexible Config**: Easy configuration via `config.json` with URL parameter overrides.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Configure Creators
+Create a `config.json` in the project root:
 ```json
 {
   "port": 8082,
   "channels": [
-    { "mid": "946974", "name": "影视飓风" },
-    { "mid": "163637592", "name": "老师好我叫何同学" }
+    { "mid": "946974", "name": "Bilibili Creator A" },
+    { "mid": "163637592", "name": "Bilibili Creator B" }
   ],
-  "limit": 25
+  "limit": 25,
+  "style": "default"
 }
 ```
 
-### 2. 运行服务
+### 2. Run the Service
+Build and start the application:
 ```bash
-go build -o glance-bilibil.exe .
-.\glance-bilibil.exe -config config.json
+go build -o glance-bilibil .
+./glance-bilibil -config config.json
 ```
 
-### 3. 集成到 Glance
-在 `glance.yml` 中添加：
+---
+
+## 🔗 Glance Integration
+
+Add the extension to your `glance.yml`:
+
 ```yaml
 - type: extension
-  url: http://localhost:8082/videos
+  url: http://localhost:8082/
   allow-potentially-dangerous-html: true
   cache: 5m
 ```
 
-## 预览
+### API Endpoints
+- `GET /` : Rendered video list (HTML Widget)
+- `GET /json` : Aggregated video data (JSON)
+- `GET /help` : Configuration help and UP info
 
-访问 `http://localhost:8082` 可以查看首页说明及示例。
+---
 
-## 开发
+## 🏗️ Architecture
 
-本项目采用分层架构：
-- `internal/api`: HTTP 路由与处理
-- `internal/service`: 业务逻辑、汇总与排序
-- `internal/platform`: Bilibili API 客户端与 WBI 签名
-- `internal/config`: 配置管理
-- `internal/models`: 核心模型
+The project follows a layered design for maintainability:
+- **API Layer**: `internal/api/handler.go` - HTTP routing.
+- **Service Layer**: `internal/service/video_service.go` - Business logic and concurrency.
+- **Platform Layer**: `internal/platform/bilibili.go` - Bilibili API interaction.
+
+---
+
+## 📜 License
+
+MIT License.
