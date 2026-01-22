@@ -20,3 +20,4 @@ Thumbs.db
 # 开发文档（不上传到仓库）
 PRD.md
 doc/
+.agent
