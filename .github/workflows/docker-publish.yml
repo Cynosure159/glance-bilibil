@@ -1,0 +1,56 @@
+name: Docker Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  # 用于 Docker 镜像的名称 (不包含 tag)
+  # 注意：这里假设 Docker Hub 仓库名与 GitHub 仓库名(小写)一致，或者你可以在这里硬编码
+  IMAGE_NAME: glance-bilibili
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # 镜像名称: <username>/<image_name>
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          # 自动生成标签：
+          # v1.2.3 -> v1.2.3, v1.2, v1, latest
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      # 设置 QEMU 和 Buildx 以支持构建
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 暂时只构建 linux/amd64，因为 Dockerfile 里硬编码了 GOARCH=amd64
+          platforms: linux/amd64

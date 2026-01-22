@@ -2,18 +2,15 @@
 package platform
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"math/rand"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"sync"
 	"time"
 
+	"glance-bilibil/internal/logger"
 	"glance-bilibil/internal/models"
 )
 
@@ -55,7 +52,6 @@ type buvidResponse struct {
 
 // BilibiliClient Bilibili API 客户端
 type BilibiliClient struct {
-	httpClient *http.Client
 	wbiKeys    *WbiKeys
 	buvid3     string
 	buvid4     string
@@ -67,7 +63,6 @@ type BilibiliClient struct {
 // NewBilibiliClient 创建新的 Bilibili 客户端
 func NewBilibiliClient() *BilibiliClient {
 	return &BilibiliClient{
-		httpClient: &http.Client{Timeout: 15 * time.Second},
 		wbiKeys:    GetWbiKeys(),
 		webidCache: make(map[string]string),
 	}
@@ -76,7 +71,7 @@ func NewBilibiliClient() *BilibiliClient {
 // Initialize 初始化客户端（获取必要的密钥）
 func (c *BilibiliClient) Initialize() error {
 	// 获取 WBI 密钥
-	if err := c.wbiKeys.Update(c.httpClient); err != nil {
+	if err := c.wbiKeys.Update(); err != nil {
 		return fmt.Errorf("获取 WBI 密钥失败: %w", err)
 	}
 
@@ -101,31 +96,26 @@ func (c *BilibiliClient) ensureBuvid() error {
 	c.buvidMu.Lock()
 	defer c.buvidMu.Unlock()
 
+	// Double check
 	if c.buvid3 != "" && c.buvid4 != "" {
 		return nil
 	}
 
-	req, err := http.NewRequest("GET", "https://api.bilibili.com/x/frontend/finger/spi", nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-	req.Header.Set("Referer", "https://www.bilibili.com/")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
+	// 使用 Resty 客户端
+	client := GetRestyClient()
 
 	var buvidResp buvidResponse
-	if err := json.Unmarshal(body, &buvidResp); err != nil {
+	resp, err := client.R().
+		SetHeader("Referer", "https://www.bilibili.com/").
+		SetResult(&buvidResp).
+		Get("https://api.bilibili.com/x/frontend/finger/spi")
+
+	if err != nil {
 		return err
+	}
+
+	if !resp.IsSuccess() {
+		return fmt.Errorf("获取 buvid HTTP 错误: %d", resp.StatusCode())
 	}
 
 	if buvidResp.Code != 0 {
@@ -134,7 +124,10 @@ func (c *BilibiliClient) ensureBuvid() error {
 
 	c.buvid3 = buvidResp.Data.B3
 	c.buvid4 = buvidResp.Data.B4
-	log.Printf("[INFO] 获取 buvid 成功")
+	logger.Debugw("获取 buvid 成功",
+		"buvid3", c.buvid3[:8]+"...",
+		"buvid4", c.buvid4[:8]+"...",
+	)
 
 	return nil
 }
@@ -151,27 +144,22 @@ func (c *BilibiliClient) getWebid(mid string) string {
 	c.webidMu.Lock()
 	defer c.webidMu.Unlock()
 
+	// Double check
 	if webid, ok := c.webidCache[mid]; ok {
 		return webid
 	}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://space.bilibili.com/%s/dynamic", mid), nil)
-	if err != nil {
-		return ""
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	// 使用 Resty 客户端
+	client := GetRestyClient()
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
+	resp, err := client.R().
+		Get(fmt.Sprintf("https://space.bilibili.com/%s/dynamic", mid))
 
-	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return ""
 	}
 
+	body := resp.Body()
 	re := regexp.MustCompile(`"access_id"\s*:\s*"([^"]+)"`)
 	matches := re.FindSubmatch(body)
 	if len(matches) > 1 {
@@ -227,42 +215,34 @@ func (c *BilibiliClient) FetchUserVideos(mid string, limit int, authorOverride s
 	}
 
 	// WBI 签名
-	signedParams, err := c.wbiKeys.Sign(params, c.httpClient)
+	signedParams, err := c.wbiKeys.Sign(params)
 	if err != nil {
 		return nil, fmt.Errorf("WBI 签名失败: %w", err)
 	}
 
 	apiURL := "https://api.bilibili.com/x/space/wbi/arc/search?" + signedParams.Encode()
 
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-	req.Header.Set("Referer", "https://space.bilibili.com/"+mid)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Origin", "https://space.bilibili.com")
+	// 使用 Resty 客户端
+	client := GetRestyClient()
 
 	c.buvidMu.RLock()
 	cookie := fmt.Sprintf("buvid3=%s; buvid4=%s", c.buvid3, c.buvid4)
 	c.buvidMu.RUnlock()
-	req.Header.Set("Cookie", cookie)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 
 	var apiResp bilibiliResponse
-	if err := json.Unmarshal(body, &apiResp); err != nil {
+	resp, err := client.R().
+		SetHeader("Referer", "https://space.bilibili.com/"+mid).
+		SetHeader("Origin", "https://space.bilibili.com").
+		SetHeader("Cookie", cookie).
+		SetResult(&apiResp).
+		Get(apiURL)
+
+	if err != nil {
 		return nil, err
+	}
+
+	if !resp.IsSuccess() {
+		return nil, fmt.Errorf("HTTP 错误: %d", resp.StatusCode())
 	}
 
 	if apiResp.Code != 0 {

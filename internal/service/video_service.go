@@ -2,13 +2,14 @@
 package service
 
 import (
-	"log"
 	"sync"
 	"time"
 
 	"glance-bilibil/internal/config"
+	"glance-bilibil/internal/logger"
 	"glance-bilibil/internal/models"
 	"glance-bilibil/internal/platform"
+	"glance-bilibil/internal/worker"
 )
 
 // cacheEntry 缓存条目
@@ -19,25 +20,100 @@ type cacheEntry struct {
 
 // VideoService 视频服务
 type VideoService struct {
-	client *platform.BilibiliClient
-	config *config.Config
-	cache  map[string]cacheEntry
-	mu     sync.RWMutex
+	client     *platform.BilibiliClient
+	config     *config.Config
+	cache      map[string]cacheEntry
+	mu         sync.RWMutex
+	workerPool *worker.Pool
 }
 
 // NewVideoService 创建视频服务
 func NewVideoService(cfg *config.Config) *VideoService {
 	client := platform.NewBilibiliClient()
+
+	// 创建 Worker Pool，默认 10 个 Worker
+	pool := worker.NewPool(10)
+	pool.Start()
+
 	return &VideoService{
-		client: client,
-		config: cfg,
-		cache:  make(map[string]cacheEntry),
+		client:     client,
+		config:     cfg,
+		cache:      make(map[string]cacheEntry),
+		workerPool: pool,
 	}
 }
 
 // Initialize 初始化服务
 func (s *VideoService) Initialize() error {
 	return s.client.Initialize()
+}
+
+// fetchTask 获取单个频道视频的任务
+type fetchTask struct {
+	service         *VideoService
+	channel         config.ChannelInfo
+	limit           int
+	cacheTTLSeconds int
+	resultChan      chan<- models.VideoList
+	wg              *sync.WaitGroup
+}
+
+// Execute 实现 worker.Task 接口
+func (t *fetchTask) Execute() error {
+	defer t.wg.Done()
+
+	// 1. 尝试从缓存获取
+	cacheKey := t.channel.Mid
+	t.service.mu.RLock()
+	entry, exists := t.service.cache[cacheKey]
+	t.service.mu.RUnlock()
+
+	// 如果缓存存在且未过期，直接使用
+	if exists && time.Since(entry.updatedAt) < time.Duration(t.cacheTTLSeconds)*time.Second {
+		logger.Debugw("命中有效缓存",
+			"up_name", t.channel.Name,
+			"up_mid", t.channel.Mid,
+			"cached", true,
+		)
+		t.resultChan <- entry.videos
+		return nil
+	}
+
+	// 2. 缓存不存在或已过期，从 API 获取
+	videos, err := t.service.client.FetchUserVideos(t.channel.Mid, t.limit, t.channel.Name)
+	if err != nil {
+		logger.Warnw("获取视频失败",
+			"up_name", t.channel.Name,
+			"up_mid", t.channel.Mid,
+			"error", err,
+		)
+		// 容错降级：如果 API 失败且有旧缓存，返回旧缓存
+		if exists {
+			logger.Infow("API 失败，返回过期缓存数据",
+				"up_name", t.channel.Name,
+				"cached", true,
+			)
+			t.resultChan <- entry.videos
+		}
+		return err
+	}
+
+	// 3. 更新缓存
+	t.service.mu.Lock()
+	t.service.cache[cacheKey] = cacheEntry{
+		videos:    videos,
+		updatedAt: time.Now(),
+	}
+	t.service.mu.Unlock()
+
+	logger.Infow("获取视频成功",
+		"up_name", t.channel.Name,
+		"up_mid", t.channel.Mid,
+		"video_count", len(videos),
+		"cached", false,
+	)
+	t.resultChan <- videos
+	return nil
 }
 
 // FetchAllVideos 并发获取所有 UP 主的视频并按时间排序
@@ -47,56 +123,40 @@ func (s *VideoService) FetchAllVideos(limit int, cacheTTLSeconds int) (models.Vi
 		return models.VideoList{}, nil
 	}
 
-	// 并发获取
-	var wg sync.WaitGroup
+	// 创建结果通道和同步等待组
 	videoChan := make(chan models.VideoList, len(s.config.Channels))
+	var submitWg sync.WaitGroup  // 用于等待任务提交
+	var executeWg sync.WaitGroup // 用于等待任务执行
 
+	// 提交任务到 Worker Pool
 	for _, channel := range s.config.Channels {
-		wg.Add(1)
-		go func(ch config.ChannelInfo) {
-			defer wg.Done()
+		submitWg.Add(1)
+		executeWg.Add(1)
 
-			// 1. 尝试从缓存获取
-			cacheKey := ch.Mid
-			s.mu.RLock()
-			entry, exists := s.cache[cacheKey]
-			s.mu.RUnlock()
+		ch := channel // 避免闭包问题
+		task := &fetchTask{
+			service:         s,
+			channel:         ch,
+			limit:           limit,
+			cacheTTLSeconds: cacheTTLSeconds,
+			resultChan:      videoChan,
+			wg:              &executeWg,
+		}
 
-			// 如果缓存存在且未过期，直接使用
-			if exists && time.Since(entry.updatedAt) < time.Duration(cacheTTLSeconds)*time.Second {
-				log.Printf("[DEBUG] %s 命中有效缓存", ch.Name)
-				videoChan <- entry.videos
-				return
-			}
-
-			// 2. 缓存不存在或已过期，从 API 获取
-			videos, err := s.client.FetchUserVideos(ch.Mid, limit, ch.Name)
-			if err != nil {
-				log.Printf("[WARN] 获取 %s (%s) 视频失败: %v", ch.Name, ch.Mid, err)
-				// 容错降级：如果 API 失败且有旧缓存，返回旧缓存
-				if exists {
-					log.Printf("[INFO] %s API 失败，返回过期缓存数据", ch.Name)
-					videoChan <- entry.videos
-				}
-				return
-			}
-
-			// 3. 更新缓存
-			s.mu.Lock()
-			s.cache[cacheKey] = cacheEntry{
-				videos:    videos,
-				updatedAt: time.Now(),
-			}
-			s.mu.Unlock()
-
-			log.Printf("[INFO] 获取 %s (%s) 视频成功: %d 个", ch.Name, ch.Mid, len(videos))
-			videoChan <- videos
-		}(channel)
+		go func() {
+			defer submitWg.Done()
+			s.workerPool.Submit(task)
+		}()
 	}
 
-	// 等待所有请求完成
-	wg.Wait()
-	close(videoChan)
+	// 等待所有任务提交完成
+	submitWg.Wait()
+
+	// 等待所有任务执行完成后关闭通道
+	go func() {
+		executeWg.Wait()
+		close(videoChan)
+	}()
 
 	// 收集结果
 	var allVideos models.VideoList
@@ -106,7 +166,7 @@ func (s *VideoService) FetchAllVideos(limit int, cacheTTLSeconds int) (models.Vi
 
 	// 检查是否全部失败且无缓存
 	if len(allVideos) == 0 {
-		return nil, nil // 或者定义一个特定的错误
+		return nil, nil
 	}
 
 	// 按时间排序并限制数量
@@ -147,4 +207,11 @@ func (s *VideoService) FetchChannelVideos(mid string, limit int, cacheTTLSeconds
 // GetConfig 获取配置
 func (s *VideoService) GetConfig() *config.Config {
 	return s.config
+}
+
+// Shutdown 关闭服务（优雅关闭 Worker Pool）
+func (s *VideoService) Shutdown() {
+	if s.workerPool != nil {
+		s.workerPool.Stop()
+	}
 }

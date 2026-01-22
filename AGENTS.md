@@ -71,6 +71,19 @@ type Video struct {
   cache: 5m
 ```
 
+### Docker 部署
+```bash
+# 构建镜像
+docker build -t glance-bilibil .
+
+# 运行容器
+docker run -d \
+  --name glance-bilibil \
+  -p 8082:8082 \
+  -v $(pwd)/config:/config \
+  glance-bilibil
+```
+
 ---
 
 ## 🔧 技术栈
@@ -78,9 +91,23 @@ type Video struct {
 | 组件 | 技术 |
 |------|------|
 | 语言 | Go 1.21+ |
-| HTTP | 标准库 net/http |
+| Web框架 | Gin (新增) |
+| HTTP客户端 | Resty v2 (连接池 + 重试) |
+| 日志 | Uber Zap (高性能结构化日志) |
 | 模板 | Go Template (embed) |
 | 鉴权 | WBI 签名 |
+| 并发 | Worker Pool (10 workers) |
+| 测试 | Go Testing (单元测试覆盖核心逻辑) |
+
+---
+
+## 🧪 单元测试
+
+### 测试覆盖范围
+- **Models**: `VideoList` 的排序与切片逻辑。
+- **Worker**: Worker Pool 的并发执行、生命周期管理与错误容错。
+- **Platform (WBI)**: 签名算法正确性及特殊字符过滤逻辑。
+- **API (Handler)**: 相对时间计算逻辑。
 
 ---
 
@@ -105,6 +132,19 @@ type Video struct {
 
 ---
 
+## 🌐 外部 API
+
+项目主要依赖以下 Bilibili 官方接口：
+
+| 接口用途 | 方法 | URL | 备注 |
+|----------|------|-----|------|
+| 获取验证参数 | GET | `https://api.bilibili.com/x/frontend/finger/spi` | 获取 `buvid3/4` |
+| 获取 WBI 密钥 | GET | `https://api.bilibili.com/x/web-interface/nav` | 获取 `img_key` 和 `sub_key` |
+| 获取 WebID | GET | `https://space.bilibili.com/{mid}/dynamic` | 从 HTML 解析 `w_webid` |
+| 获取视频列表 | GET | `https://api.bilibili.com/x/space/wbi/arc/search` | 核心接口，需 WBI 签名 |
+
+---
+
 ## 🎯 设计模式与优化
 
 ### 风控解决方案
@@ -113,7 +153,26 @@ type Video struct {
 - **dm 参数**: 模拟浏览器行为
 - **w_webid**: 从用户空间页面解析获取
 
-### 并发处理
+### HTTP 优化（新增）
+**全局单例 Resty 客户端** (`internal/platform/http_client.go`)
+- **连接池配置**
+  - `MaxIdleConns`: 100 （最大空闲连接）
+  - `MaxIdleConnsPerHost`: 10 （每个 Host 最大空闲连接）
+  - `IdleConnTimeout`: 90s （空闲连接超时）
+- **智能重试策略**
+  - 重试次数: 3 次
+  - 重试等待: 1s - 5s （指数退避）
+  - 重试条件: 网络错误、5xx 错误、429 限流
+- **优势**: TCP 连接复用，减少握手开销，提升性能
+
+### 并发处理（优化）
+**Worker Pool 模式** (`internal/worker/pool.go`)
+- 默认 10 个 Worker，限制并发数量
+- 任务队列缓冲：Worker 数量的 2 倍
+- **优势**: 防止突发流量耗尽系统资源
+- **应用场景**: Service 层获取多个 UP 主视频
+
+**原有并发机制**
 - 使用 goroutine 并发获取多个 UP 主的视频
 - WaitGroup 同步，channel 收集结果
 - 单个失败不影响其他 UP 主
@@ -133,9 +192,12 @@ glance-bilibil/
 │   ├── models/models.go       # 数据结构
 │   ├── platform/
 │   │   ├── bilibili.go        # Bilibili 客户端
-│   │   └── wbi.go             # WBI 签名
-│   └── service/
-│       └── video_service.go   # 业务逻辑
+│   │   ├── wbi.go             # WBI 签名
+│   │   └── http_client.go     # HTTP 客户端（新增）
+│   ├── service/
+│   │   └── video_service.go   # 业务逻辑
+│   └── worker/
+│       └── pool.go            # Worker Pool（新增）
 ├── templates/                 # HTML 模板
 │   ├── videos.html
 │   ├── videos-grid.html
@@ -155,11 +217,26 @@ glance-bilibil/
 - [x] WBI 签名与风控绕过
 - [x] 三种展示样式
 - [x] 配置文件支持
+- [x] **HTTP 连接池优化**（2026-01-21）
+- [x] **Worker Pool 并发控制**（2026-01-21）
+- [x] **智能重试策略**（2026-01-21）
+- [x] **核心模块单元测试**（2026-01-21）
+  - 实现 Models, Worker, WBI 等模块测试
+  - 修复 WBI 特殊字符过滤 Bug
+- [x] **GitHub Action 自动化测试**（2026-01-21）
+  - 在 CI 中集成单元测试流程，实现代码提交时自动运行测试
+  - **任务模块化**：拆分为 Lint, Test, Build, Docker 四个并行 Job
+  - **Lint 检查**：独立运行代码格式检查 (gofmt) 和静态分析 (go vet)
+  - **Docker 构建**：CI 中增加 Docker Image 构建验证
+- [x] **高性能结构化日志系统**（2026-01-21）
+  - 使用 Uber Zap 替换标准库 log
+  - 环境自动检测：开发模式（高亮 Console + Debug）/ 生产模式（JSON + Info）
+  - 智能默认值：`go run` 启动 Debug 级别，编译后/Docker Info 级别
+  - 结构化字段：自动携带 UP主名称、ID、缓存状态等上下文
 
 ### 待办
-- [ ] Docker 支持
+- [x] Docker 支持（2026-01-21）
 - [ ] Glance 集成测试
-- [ ] 缓存机制
 
 ---
 
@@ -168,7 +245,23 @@ glance-bilibil/
 ### 代码规范
 - 所有公开函数必须添加注释
 - 错误处理使用 Go 标准错误模式
-- 日志使用 `log.Printf` 并带等级标签
+- 日志使用 `logger.Info/Warn/Error` 等方法，重要业务逻辑使用 `logger.Infow/Warnw/Errorw` 携带上下文字段
+
+### 日志使用规范
+**结构化日志方法**（推荐用于业务逻辑）：
+```go
+logger.Infow("获取视频成功",
+    "up_name", channel.Name,
+    "up_mid", channel.Mid,
+    "video_count", len(videos),
+    "cached", false,
+)
+```
+
+**普通日志方法**：
+```go
+logger.Info("服务启动成功", zap.String("port", port))
+```
 
 ### 添加新功能
 1. 模型层：在 `internal/models/` 添加数据结构

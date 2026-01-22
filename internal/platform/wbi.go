@@ -2,13 +2,9 @@
 package platform
 
 import (
-	"bytes"
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -58,32 +54,25 @@ func getMixinKey(imgKey, subKey string) string {
 }
 
 // Update 从 Bilibili 获取最新的 WBI 密钥
-func (wk *WbiKeys) Update(client *http.Client) error {
+func (wk *WbiKeys) Update() error {
 	wk.mu.Lock()
 	defer wk.mu.Unlock()
 
-	req, err := http.NewRequest("GET", "https://api.bilibili.com/x/web-interface/nav", nil)
-	if err != nil {
-		return fmt.Errorf("创建请求失败: %w", err)
-	}
+	// 使用全局 Resty 客户端
+	client := GetRestyClient()
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Referer", "https://www.bilibili.com/")
+	var nav navResponse
+	resp, err := client.R().
+		SetHeader("Referer", "https://www.bilibili.com/").
+		SetResult(&nav).
+		Get("https://api.bilibili.com/x/web-interface/nav")
 
-	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("请求失败: %w", err)
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("读取响应失败: %w", err)
-	}
-
-	var nav navResponse
-	if err := json.Unmarshal(body, &nav); err != nil {
-		return fmt.Errorf("解析 JSON 失败: %w", err)
+	if !resp.IsSuccess() {
+		return fmt.Errorf("HTTP 错误: %d", resp.StatusCode())
 	}
 
 	if nav.Code != 0 && nav.Code != -101 {
@@ -107,20 +96,20 @@ func (wk *WbiKeys) Update(client *http.Client) error {
 }
 
 // EnsureKeys 确保密钥有效
-func (wk *WbiKeys) EnsureKeys(client *http.Client) error {
+func (wk *WbiKeys) EnsureKeys() error {
 	wk.mu.RLock()
 	needUpdate := time.Since(wk.LastUpdateTime) > time.Hour || wk.MixinKey == ""
 	wk.mu.RUnlock()
 
 	if needUpdate {
-		return wk.Update(client)
+		return wk.Update()
 	}
 	return nil
 }
 
 // Sign 对请求参数进行 WBI 签名
-func (wk *WbiKeys) Sign(params url.Values, client *http.Client) (url.Values, error) {
-	if err := wk.EnsureKeys(client); err != nil {
+func (wk *WbiKeys) Sign(params url.Values) (url.Values, error) {
+	if err := wk.EnsureKeys(); err != nil {
 		return nil, fmt.Errorf("获取 WBI 密钥失败: %w", err)
 	}
 
@@ -143,17 +132,19 @@ func (wk *WbiKeys) Sign(params url.Values, client *http.Client) (url.Values, err
 	return signedParams, nil
 }
 
-// removeUnwantedChars 过滤掉 WBI 签名不允许的特殊字符
+// removeUnwantedChars 过滤掉 WBI 签名不允许的特殊字符: ! ' ( ) *
 func removeUnwantedChars(v url.Values) url.Values {
-	encoded := v.Encode()
-	chars := []byte{'!', '\'', '(', ')', '*'}
-	b := []byte(encoded)
-	for _, c := range chars {
-		b = bytes.ReplaceAll(b, []byte{c}, nil)
-	}
-	result, err := url.ParseQuery(string(b))
-	if err != nil {
-		return v
+	result := make(url.Values)
+	for k, vs := range v {
+		newVs := make([]string, len(vs))
+		for i, val := range vs {
+			s := val
+			for _, char := range []string{"!", "'", "(", ")", "*"} {
+				s = strings.ReplaceAll(s, char, "")
+			}
+			newVs[i] = s
+		}
+		result[k] = newVs
 	}
 	return result
 }
