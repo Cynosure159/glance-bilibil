@@ -44,14 +44,45 @@
 }
 ```
 
-### 2. 运行服务
-编译并启动：
+### 2. Docker 部署（推荐）
+
+#### 使用 Docker Run
+```bash
+docker run -d \
+  --name glance-bilibil \
+  -p 8082:8082 \
+  -v $(pwd)/config:/config \
+  cynosure159/glance-bilibili:latest
+```
+
+#### 使用 Docker Compose
+创建 `docker-compose.yml`:
+```yaml
+version: '3.8'
+
+services:
+  glance-bilibil:
+    image: cynosure159/glance-bilibili:latest
+    container_name: glance-bilibil
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./config:/config
+    restart: unless-stopped
+```
+
+启动服务：
+```bash
+docker-compose up -d
+```
+
+### 3. 本地编译运行
 ```bash
 go build -o glance-bilibil .
 ./glance-bilibil -config config/config.json -port 8082 -limit 25
 ```
 
-### 3. Docker 部署
+### 4. 从源码构建 Docker 镜像
 ```bash
 # 构建镜像
 docker build -t glance-bilibil .

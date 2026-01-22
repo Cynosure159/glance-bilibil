@@ -18,6 +18,12 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" />
 </p>
 
+## 📚 About This Project
+
+Since Glance's native components only support YouTube video tracking, this plugin was developed to monitor Bilibili video updates.
+I'm not particularly experienced with Go, so most of the code was generated with AI assistance.
+If you have any feature requests or suggestions, please open an issue or submit a PR (which would be even better!).
+
 ## ✨ Features
 
 - 👤 **Multi-UP Support**: Monitor multiple Bilibili creators via a single config.
@@ -43,11 +49,55 @@ Create a `config/config.json` in the project root:
 }
 ```
 
-### 2. Run the Service
-Build and start the application:
+### 2. Docker Deployment (Recommended)
+
+#### Using Docker Run
+```bash
+docker run -d \
+  --name glance-bilibil \
+  -p 8082:8082 \
+  -v $(pwd)/config:/config \
+  cynosure159/glance-bilibili:latest
+```
+
+#### Using Docker Compose
+Create a `docker-compose.yml`:
+```yaml
+version: '3.8'
+
+services:
+  glance-bilibil:
+    image: cynosure159/glance-bilibili:latest
+    container_name: glance-bilibil
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./config:/config
+    restart: unless-stopped
+```
+
+Start the service:
+```bash
+docker-compose up -d
+```
+
+### 3. Build from Source
 ```bash
 go build -o glance-bilibil .
 ./glance-bilibil -config config/config.json -port 8082 -limit 25
+```
+
+### 4. Build Docker Image from Source
+```bash
+# Build the image
+docker build -t glance-bilibil .
+
+# Run container
+docker run -d \
+  --name glance-bilibil \
+  -p 8082:8082 \
+  -v $(pwd)/config:/config \
+  glance-bilibil
 ```
 ## 🔗 Glance Integration
 
