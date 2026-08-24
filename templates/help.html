@@ -80,12 +80,9 @@
             <td>-</td>
             <td>临时指定单个 UP 主 UID</td>
         </tr>
-        <tr>
-            <td>cache</td>
-            <td>300</td>
-            <td>缓存时间（秒），0 为禁用</td>
-        </tr>
     </table>
+
+    <p>配置频道会在服务启动时预热，并按 <code>refresh_interval</code>（默认 <code>1h</code>）后台刷新。临时 MID 仅在访问时按需刷新。</p>
 
     <h2>示例</h2>
     <ul>

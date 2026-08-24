@@ -41,6 +41,7 @@
   - HTTP 连接池复用，减少 TCP 握手开销
   - Worker Pool 并发控制（默认 10 workers），防止资源耗尽
   - 智能重试策略，自动应对网络抖动
+  - 后台预热与定时刷新，页面请求直接读取缓存
 
 ## 🚀 快速开始
 
@@ -48,6 +49,7 @@
 在项目根目录创建 `config/config.json`:
 ```json
 {
+  "refresh_interval": "1h",
   "channels": [
     { "mid": "946974", "name": "影视飓风" },
     { "mid": "163637592", "name": "老师好我叫何同学" },
@@ -55,6 +57,8 @@
   ]
 }
 ```
+
+`refresh_interval` 控制配置频道的后台刷新间隔，默认 `1h`。服务启动时会立即异步预热；临时 `mid` 仅在访问时按需刷新，不参与定时任务。
 
 ### 2. Docker 部署（推荐）
 
@@ -122,7 +126,6 @@ docker run -d \
   - `limit`: 显示视频数量 (默认: 25)。
   - `style`: 显示样式: `horizontal-cards` (默认), `grid-cards`, `vertical-list`。
   - `mid`: 临时指定单个 UP 主 MID 进行过滤。
-  - `cache`: 缓存时间（秒），默认 300s（5分钟）。设置为 0 禁用。
   - `collapse-after`: 垂直列表在 N 个项目后折叠 (默认: 7)。
   - `collapse-after-rows`: 网格布局在 N 行后折叠 (默认: 4)。
 - `GET /json` : 聚合后的视频原始数据 (JSON)

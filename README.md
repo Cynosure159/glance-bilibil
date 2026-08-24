@@ -47,6 +47,7 @@ If you have any feature requests or suggestions, please open an issue or submit 
   - HTTP connection pooling for reduced TCP handshake overhead
   - Worker pool concurrency control (default 10 workers) to prevent resource exhaustion
   - Smart retry strategy with exponential backoff for network resilience
+  - Background warm-up and scheduled refreshes for cache-first responses
 
 ## 🚀 Quick Start
 
@@ -54,12 +55,15 @@ If you have any feature requests or suggestions, please open an issue or submit 
 Create a `config/config.json` in the project root:
 ```json
 {
+  "refresh_interval": "1h",
   "channels": [
     { "mid": "946974", "name": "Bilibili Creator A" },
     { "mid": "163637592", "name": "Bilibili Creator B" }
   ]
 }
 ```
+
+`refresh_interval` controls configured creators' background refresh interval (default: `1h`). The service warms them asynchronously at startup; temporary `mid` values refresh only on demand and are never scheduled.
 
 ### 2. Docker Deployment (Recommended)
 
@@ -127,7 +131,6 @@ Add the extension to your `glance.yml`:
   - `limit`: Number of videos to display (default: 25).
   - `style`: Visual style: `horizontal-cards` (default), `grid-cards`, `vertical-list`.
   - `mid`: Temporarily filter by a specific UP master MID.
-  - `cache`: Cache duration in seconds (default: 300). 0 to disable.
   - `collapse-after`: Collapse vertical list after N items (default: 7).
   - `collapse-after-rows`: Collapse grid after N rows (default: 4).
 - `GET /json` : Aggregated video data (JSON)

@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
-// Config 应用配置 (仅包含 UP 主通道信息)
+const defaultRefreshInterval = time.Hour
+
+// Config 应用配置
 type Config struct {
-	Channels []ChannelInfo `json:"channels"` // UP 主配置列表
+	Channels        []ChannelInfo `json:"channels"`         // UP 主配置列表
+	RefreshInterval string        `json:"refresh_interval"` // 配置频道的后台刷新间隔，例如 "1h"
 }
 
 // ChannelInfo UP 主信息
@@ -22,8 +26,18 @@ type ChannelInfo struct {
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
-		Channels: []ChannelInfo{},
+		Channels:        []ChannelInfo{},
+		RefreshInterval: defaultRefreshInterval.String(),
 	}
+}
+
+// GetRefreshInterval 返回配置频道的后台刷新间隔。
+func (c *Config) GetRefreshInterval() time.Duration {
+	interval, err := time.ParseDuration(c.RefreshInterval)
+	if err != nil || interval <= 0 {
+		return defaultRefreshInterval
+	}
+	return interval
 }
 
 // Load 从文件加载配置
@@ -48,6 +62,16 @@ func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	if cfg.RefreshInterval == "" {
+		cfg.RefreshInterval = defaultRefreshInterval.String()
+	}
+	interval, err := time.ParseDuration(cfg.RefreshInterval)
+	if err != nil {
+		return nil, fmt.Errorf("refresh_interval 格式无效: %w", err)
+	}
+	if interval <= 0 {
+		return nil, fmt.Errorf("refresh_interval 必须大于 0")
 	}
 
 	return cfg, nil

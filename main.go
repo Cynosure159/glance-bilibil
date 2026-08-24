@@ -36,10 +36,12 @@ func main() {
 
 	logger.Infow("配置加载成功",
 		"up_count", len(cfg.Channels),
+		"refresh_interval", cfg.GetRefreshInterval().String(),
 	)
 
 	// 创建服务
 	svc := service.NewVideoService(cfg)
+	defer svc.Shutdown()
 
 	// 初始化（获取 WBI 密钥等）
 	logger.Info("正在初始化...")
@@ -50,6 +52,9 @@ func main() {
 	} else {
 		logger.Info("初始化成功")
 	}
+
+	// 缓存预热不阻塞 HTTP 服务启动。
+	svc.StartCacheRefresh()
 
 	// 创建处理器 (默认展示样式固定为 horizontal-cards)
 	handler, err := api.NewHandler(svc, templatesFS, *limit)

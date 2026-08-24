@@ -1,4 +1,4 @@
-// Package service 提供业务逻辑
+// Package service 提供业务逻辑。
 package service
 
 import (
@@ -14,224 +14,239 @@ import (
 )
 
 const (
-	defaultWorkerCount    = 4
-	requestJitterMinDelay = 250 * time.Millisecond
-	requestJitterMaxDelay = 1200 * time.Millisecond
+	defaultWorkerCount = 4
+	cacheFetchLimit    = 50
+	requestJitterMin   = 250 * time.Millisecond
+	requestJitterMax   = 1200 * time.Millisecond
+	cacheStaleReason   = "缓存缺失或已过期"
 )
 
-// cacheEntry 缓存条目
+// cacheEntry 是单个 UP 主的视频缓存。
 type cacheEntry struct {
 	videos    models.VideoList
 	updatedAt time.Time
 }
 
-// VideoService 视频服务
+// VideoService 管理视频缓存及后台刷新任务。
 type VideoService struct {
 	client     *platform.BilibiliClient
 	config     *config.Config
 	cache      map[string]cacheEntry
+	refreshing map[string]bool
 	mu         sync.RWMutex
 	workerPool *worker.Pool
+	stopCh     chan struct{}
+	startOnce  sync.Once
+	stopOnce   sync.Once
 }
 
-// NewVideoService 创建视频服务
+// NewVideoService 创建视频服务。
 func NewVideoService(cfg *config.Config) *VideoService {
-	client := platform.NewBilibiliClient()
-
-	// 创建 Worker Pool，降低并发以减少被风控拦截的概率。
 	pool := worker.NewPool(defaultWorkerCount)
 	pool.Start()
 
 	return &VideoService{
-		client:     client,
+		client:     platform.NewBilibiliClient(),
 		config:     cfg,
 		cache:      make(map[string]cacheEntry),
+		refreshing: make(map[string]bool),
 		workerPool: pool,
+		stopCh:     make(chan struct{}),
 	}
 }
 
-// Initialize 初始化服务
+// Initialize 初始化服务。
 func (s *VideoService) Initialize() error {
 	return s.client.Initialize()
 }
 
-func (s *VideoService) getCachedVideos(mid string, cacheTTLSeconds int) (models.VideoList, bool) {
-	// 读取缓存条目
+// StartCacheRefresh 立即预热配置频道，并按 refresh_interval 定时刷新。
+func (s *VideoService) StartCacheRefresh() {
+	s.startOnce.Do(func() {
+		interval := s.config.GetRefreshInterval()
+		s.refreshConfiguredChannels("启动预热")
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					s.refreshConfiguredChannels("定时刷新")
+				case <-s.stopCh:
+					return
+				}
+			}
+		}()
+		logger.Infow("后台缓存刷新已启动", "refresh_interval", interval.String())
+	})
+}
+
+func (s *VideoService) refreshConfiguredChannels(reason string) {
+	logger.Infow("开始批量刷新配置频道缓存",
+		"reason", reason,
+		"channel_count", len(s.config.Channels),
+	)
+	for _, channel := range s.config.Channels {
+		s.scheduleRefresh(channel.Mid, channel.Name, reason)
+	}
+}
+
+func (s *VideoService) getCachedVideos(mid string) (models.VideoList, bool, time.Time) {
 	s.mu.RLock()
 	entry, exists := s.cache[mid]
 	s.mu.RUnlock()
-
 	if !exists {
-		return nil, false
+		return nil, false, time.Time{}
 	}
-
-	// 缓存存在但已过期，仍返回旧数据供降级兜底使用
-	if time.Since(entry.updatedAt) >= time.Duration(cacheTTLSeconds)*time.Second {
-		return entry.videos, false
-	}
-
-	return entry.videos, true
+	return entry.videos, time.Since(entry.updatedAt) < s.config.GetRefreshInterval(), entry.updatedAt
 }
 
-func (s *VideoService) setCachedVideos(mid string, videos models.VideoList) {
-	// 更新缓存
+func (s *VideoService) scheduleRefresh(mid, authorName, reason string) {
 	s.mu.Lock()
-	s.cache[mid] = cacheEntry{
-		videos:    videos,
-		updatedAt: time.Now(),
+	if s.refreshing[mid] {
+		s.mu.Unlock()
+		return
 	}
+	s.refreshing[mid] = true
+	s.mu.Unlock()
+	logger.Debugw("已调度视频缓存刷新",
+		"up_mid", mid,
+		"up_name", authorName,
+		"reason", reason,
+	)
+
+	// Submit 在队列繁忙时可能等待，因此放到 goroutine 中，确保 HTTP 请求只读缓存。
+	go s.workerPool.Submit(&refreshTask{service: s, mid: mid, authorName: authorName})
+}
+
+func (s *VideoService) finishRefresh(mid string) {
+	s.mu.Lock()
+	delete(s.refreshing, mid)
 	s.mu.Unlock()
 }
 
-// fetchTask 获取单个频道视频的任务
-type fetchTask struct {
-	service         *VideoService
-	channel         config.ChannelInfo
-	limit           int
-	cacheTTLSeconds int
-	resultChan      chan<- models.VideoList
-	wg              *sync.WaitGroup
+func (s *VideoService) setCachedVideos(mid string, videos models.VideoList) {
+	s.mu.Lock()
+	s.cache[mid] = cacheEntry{videos: videos, updatedAt: time.Now()}
+	s.mu.Unlock()
 }
 
-// Execute 实现 worker.Task 接口
-func (t *fetchTask) Execute() error {
-	defer t.wg.Done()
+// refreshTask 在 Worker Pool 中刷新单个频道缓存。
+type refreshTask struct {
+	service    *VideoService
+	mid        string
+	authorName string
+}
 
-	// 1. 尝试从缓存获取
-	cachedVideos, cacheValid := t.service.getCachedVideos(t.channel.Mid, t.cacheTTLSeconds)
-	if cacheValid {
-		logger.Debugw("命中有效缓存",
-			"up_name", t.channel.Name,
-			"up_mid", t.channel.Mid,
-			"cached", true,
-		)
-		t.resultChan <- cachedVideos
-		return nil
-	}
+// Execute 实现 worker.Task。
+func (t *refreshTask) Execute() error {
+	defer t.service.finishRefresh(t.mid)
 
-	// 为非缓存请求增加轻微抖动，避免多个频道同时触发风控。
+	// 打散同一批预热或定时刷新请求，降低同时访问 B 站接口触发风控的概率。
 	time.Sleep(randomRequestDelay())
-
-	// 2. 缓存不存在或已过期，从 API 获取
-	videos, err := t.service.client.FetchUserVideos(t.channel.Mid, t.limit, t.channel.Name)
+	videos, err := t.service.client.FetchUserVideos(t.mid, cacheFetchLimit, t.authorName)
 	if err != nil {
-		logger.Warnw("获取视频失败",
-			"up_name", t.channel.Name,
-			"up_mid", t.channel.Mid,
-			"error", err,
-		)
-		// 容错降级：如果 API 失败且有旧缓存，返回旧缓存
-		if cachedVideos != nil {
-			logger.Infow("API 失败，返回过期缓存数据",
-				"up_name", t.channel.Name,
-				"cached", true,
-			)
-			t.resultChan <- cachedVideos
-		}
+		logger.Warnw("后台刷新视频缓存失败", "up_mid", t.mid, "up_name", t.authorName, "error", err)
 		return err
 	}
-
-	// 3. 更新缓存
-	t.service.setCachedVideos(t.channel.Mid, videos)
-
-	logger.Infow("获取视频成功",
-		"up_name", t.channel.Name,
-		"up_mid", t.channel.Mid,
-		"video_count", len(videos),
-		"cached", false,
-	)
-	t.resultChan <- videos
+	t.service.setCachedVideos(t.mid, videos)
+	logger.Infow("后台刷新视频缓存成功", "up_mid", t.mid, "up_name", t.authorName, "video_count", len(videos))
 	return nil
 }
 
-// FetchAllVideos 并发获取所有 UP 主的视频并按时间排序
-// cacheTTLSeconds 缓存有效期（秒）
-func (s *VideoService) FetchAllVideos(limit int, cacheTTLSeconds int) (models.VideoList, error) {
-	if len(s.config.Channels) == 0 {
-		return models.VideoList{}, nil
-	}
-
-	// 创建结果通道和同步等待组
-	videoChan := make(chan models.VideoList, len(s.config.Channels))
-	var executeWg sync.WaitGroup
-
-	// 提交任务到 Worker Pool
-	for _, channel := range s.config.Channels {
-		executeWg.Add(1)
-
-		s.workerPool.Submit(&fetchTask{
-			service:         s,
-			channel:         channel,
-			limit:           limit,
-			cacheTTLSeconds: cacheTTLSeconds,
-			resultChan:      videoChan,
-			wg:              &executeWg,
-		})
-	}
-
-	// 等待所有任务执行完成后关闭通道
-	go func() {
-		executeWg.Wait()
-		close(videoChan)
-	}()
-
-	// 收集结果
+// FetchAllVideos 从缓存汇总配置频道的视频。过期或缺失的缓存会在后台刷新。
+func (s *VideoService) FetchAllVideos(limit int) (models.VideoList, error) {
 	var allVideos models.VideoList
-	for videos := range videoChan {
+	var refreshChannels []string
+	var cachedChannels []string
+	for _, channel := range s.config.Channels {
+		videos, fresh, cachedAt := s.getCachedVideos(channel.Mid)
+		s.logCachedResponse(channel.Mid, channel.Name, cachedAt, fresh)
+		if !fresh {
+			refreshChannels = append(refreshChannels, formatChannel(channel))
+			s.scheduleRefresh(channel.Mid, channel.Name, cacheStaleReason)
+		} else {
+			cachedChannels = append(cachedChannels, formatChannel(channel))
+		}
 		allVideos = append(allVideos, videos...)
 	}
-
-	// 检查是否全部失败且无缓存
-	if len(allVideos) == 0 {
-		return nil, nil
-	}
-
-	// 按时间排序并限制数量
+	logCacheCheck(refreshChannels, cachedChannels)
 	return allVideos.SortByNewest().Limit(limit), nil
 }
 
-// FetchChannelVideos 获取单个 UP 主的视频
-func (s *VideoService) FetchChannelVideos(mid string, limit int, cacheTTLSeconds int) (models.VideoList, error) {
-	// 1. 尝试从缓存获取
-	cachedVideos, cacheValid := s.getCachedVideos(mid, cacheTTLSeconds)
-	if cacheValid {
-		return cachedVideos.SortByNewest().Limit(limit), nil
+// FetchChannelVideos 从缓存返回单个 UP 主视频。临时 MID 仅按需刷新，不加入定时任务。
+func (s *VideoService) FetchChannelVideos(mid string, limit int) (models.VideoList, error) {
+	videos, fresh, cachedAt := s.getCachedVideos(mid)
+	authorName := s.channelName(mid)
+	s.logCachedResponse(mid, authorName, cachedAt, fresh)
+	channel := formatChannel(config.ChannelInfo{Mid: mid, Name: authorName})
+	var refreshChannels, cachedChannels []string
+	if !fresh {
+		refreshChannels = []string{channel}
+		s.scheduleRefresh(mid, authorName, cacheStaleReason)
+	} else {
+		cachedChannels = []string{channel}
 	}
-
-	// 为非缓存请求增加轻微抖动，避免与批量抓取同时触发风控。
-	time.Sleep(randomRequestDelay())
-
-	// 2. 从 API 获取
-	videos, err := s.client.FetchUserVideos(mid, limit, "")
-	if err != nil {
-		if cachedVideos != nil {
-			return cachedVideos.SortByNewest().Limit(limit), nil
-		}
-		return nil, err
-	}
-
-	// 3. 更新缓存
-	s.setCachedVideos(mid, videos)
-
+	logCacheCheck(refreshChannels, cachedChannels)
 	return videos.SortByNewest().Limit(limit), nil
 }
 
-// GetConfig 获取配置
+func logCacheCheck(refreshChannels, cachedChannels []string) {
+	logger.Infow("请求检查视频缓存",
+		"refresh_channels", refreshChannels,
+		"cached_channels", cachedChannels,
+	)
+}
+
+func (s *VideoService) logCachedResponse(mid, authorName string, cachedAt time.Time, fresh bool) {
+	if cachedAt.IsZero() {
+		return
+	}
+	logger.Debugw("使用视频缓存响应请求",
+		"up_mid", mid,
+		"up_name", authorName,
+		"cache_updated_at", cachedAt,
+		"cache_age", time.Since(cachedAt).Round(time.Second).String(),
+		"cache_fresh", fresh,
+	)
+}
+
+func formatChannel(channel config.ChannelInfo) string {
+	if channel.Name == "" {
+		return channel.Mid
+	}
+	return channel.Name + "(" + channel.Mid + ")"
+}
+
+func randomRequestDelay() time.Duration {
+	window := requestJitterMax - requestJitterMin
+	if window <= 0 {
+		return requestJitterMin
+	}
+	return requestJitterMin + time.Duration(rand.Int63n(int64(window)))
+}
+
+func (s *VideoService) channelName(mid string) string {
+	for _, channel := range s.config.Channels {
+		if channel.Mid == mid {
+			return channel.Name
+		}
+	}
+	return ""
+}
+
+// GetConfig 获取配置。
 func (s *VideoService) GetConfig() *config.Config {
 	return s.config
 }
 
-// Shutdown 关闭服务（优雅关闭 Worker Pool）
+// Shutdown 停止后台刷新及 Worker Pool。
 func (s *VideoService) Shutdown() {
-	if s.workerPool != nil {
-		s.workerPool.Stop()
-	}
-}
-
-func randomRequestDelay() time.Duration {
-	window := requestJitterMaxDelay - requestJitterMinDelay
-	if window <= 0 {
-		return requestJitterMinDelay
-	}
-	return requestJitterMinDelay + time.Duration(rand.Int63n(int64(window)))
+	s.stopOnce.Do(func() {
+		logger.Info("停止后台缓存刷新")
+		close(s.stopCh)
+		if s.workerPool != nil {
+			s.workerPool.Stop()
+		}
+	})
 }

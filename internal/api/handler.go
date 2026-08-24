@@ -136,23 +136,16 @@ func (h *Handler) VideosHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cacheTTL := 300 // 默认 5 分钟
-	if cStr := query.Get("cache"); cStr != "" {
-		if c, err := strconv.Atoi(cStr); err == nil && c >= 0 {
-			cacheTTL = c
-		}
-	}
-
 	// 检查是否有临时指定的单个 mid
 	var videos models.VideoList
 	var err error
 
 	if mid := query.Get("mid"); mid != "" {
 		// 单个 UP 主模式
-		videos, err = h.service.FetchChannelVideos(mid, limit, cacheTTL)
+		videos, err = h.service.FetchChannelVideos(mid, limit)
 	} else {
 		// 多 UP 主汇总模式
-		videos, err = h.service.FetchAllVideos(limit, cacheTTL)
+		videos, err = h.service.FetchAllVideos(limit)
 	}
 
 	if err != nil {
@@ -206,20 +199,13 @@ func (h *Handler) JSONHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cacheTTL := 300
-	if cStr := query.Get("cache"); cStr != "" {
-		if c, err := strconv.Atoi(cStr); err == nil && c >= 0 {
-			cacheTTL = c
-		}
-	}
-
 	var videos models.VideoList
 	var err error
 
 	if mid := query.Get("mid"); mid != "" {
-		videos, err = h.service.FetchChannelVideos(mid, limit, cacheTTL)
+		videos, err = h.service.FetchChannelVideos(mid, limit)
 	} else {
-		videos, err = h.service.FetchAllVideos(limit, cacheTTL)
+		videos, err = h.service.FetchAllVideos(limit)
 	}
 
 	if err != nil {
