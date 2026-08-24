@@ -5,6 +5,7 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -39,8 +40,19 @@ type TemplateData struct {
 }
 
 const (
-	DefaultStyle = "horizontal-cards"
+	DefaultStyle    = "horizontal-cards"
+	defaultCacheTTL = 300
 )
+
+func parseCacheTTL(query url.Values) int {
+	cacheTTL := defaultCacheTTL
+	if value := query.Get("cache"); value != "" {
+		if ttl, err := strconv.Atoi(value); err == nil && ttl >= 0 {
+			cacheTTL = ttl
+		}
+	}
+	return cacheTTL
+}
 
 // NewHandler 创建处理器
 func NewHandler(svc *service.VideoService, templatesFS embed.FS, defaultLimit int) (*Handler, error) {
@@ -136,16 +148,18 @@ func (h *Handler) VideosHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cacheTTL := parseCacheTTL(query)
+
 	// 检查是否有临时指定的单个 mid
 	var videos models.VideoList
 	var err error
 
 	if mid := query.Get("mid"); mid != "" {
 		// 单个 UP 主模式
-		videos, err = h.service.FetchChannelVideos(mid, limit)
+		videos, err = h.service.FetchChannelVideos(mid, limit, cacheTTL)
 	} else {
 		// 多 UP 主汇总模式
-		videos, err = h.service.FetchAllVideos(limit)
+		videos, err = h.service.FetchAllVideos(limit, cacheTTL)
 	}
 
 	if err != nil {
@@ -199,13 +213,15 @@ func (h *Handler) JSONHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cacheTTL := parseCacheTTL(query)
+
 	var videos models.VideoList
 	var err error
 
 	if mid := query.Get("mid"); mid != "" {
-		videos, err = h.service.FetchChannelVideos(mid, limit)
+		videos, err = h.service.FetchChannelVideos(mid, limit, cacheTTL)
 	} else {
-		videos, err = h.service.FetchAllVideos(limit)
+		videos, err = h.service.FetchAllVideos(limit, cacheTTL)
 	}
 
 	if err != nil {

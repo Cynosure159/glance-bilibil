@@ -91,14 +91,14 @@ func (s *VideoService) refreshConfiguredChannels(reason string) {
 	}
 }
 
-func (s *VideoService) getCachedVideos(mid string) (models.VideoList, bool, time.Time) {
+func (s *VideoService) getCachedVideos(mid string, cacheTTL time.Duration) (models.VideoList, bool, time.Time) {
 	s.mu.RLock()
 	entry, exists := s.cache[mid]
 	s.mu.RUnlock()
 	if !exists {
 		return nil, false, time.Time{}
 	}
-	return entry.videos, time.Since(entry.updatedAt) < s.config.GetRefreshInterval(), entry.updatedAt
+	return entry.videos, time.Since(entry.updatedAt) < cacheTTL, entry.updatedAt
 }
 
 func (s *VideoService) scheduleRefresh(mid, authorName, reason string) {
@@ -155,12 +155,13 @@ func (t *refreshTask) Execute() error {
 }
 
 // FetchAllVideos 从缓存汇总配置频道的视频。过期或缺失的缓存会在后台刷新。
-func (s *VideoService) FetchAllVideos(limit int) (models.VideoList, error) {
+func (s *VideoService) FetchAllVideos(limit, cacheTTLSeconds int) (models.VideoList, error) {
 	var allVideos models.VideoList
 	var refreshChannels []string
 	var cachedChannels []string
+	cacheTTL := time.Duration(cacheTTLSeconds) * time.Second
 	for _, channel := range s.config.Channels {
-		videos, fresh, cachedAt := s.getCachedVideos(channel.Mid)
+		videos, fresh, cachedAt := s.getCachedVideos(channel.Mid, cacheTTL)
 		s.logCachedResponse(channel.Mid, channel.Name, cachedAt, fresh)
 		if !fresh {
 			refreshChannels = append(refreshChannels, formatChannel(channel))
@@ -175,8 +176,9 @@ func (s *VideoService) FetchAllVideos(limit int) (models.VideoList, error) {
 }
 
 // FetchChannelVideos 从缓存返回单个 UP 主视频。临时 MID 仅按需刷新，不加入定时任务。
-func (s *VideoService) FetchChannelVideos(mid string, limit int) (models.VideoList, error) {
-	videos, fresh, cachedAt := s.getCachedVideos(mid)
+func (s *VideoService) FetchChannelVideos(mid string, limit, cacheTTLSeconds int) (models.VideoList, error) {
+	cacheTTL := time.Duration(cacheTTLSeconds) * time.Second
+	videos, fresh, cachedAt := s.getCachedVideos(mid, cacheTTL)
 	authorName := s.channelName(mid)
 	s.logCachedResponse(mid, authorName, cachedAt, fresh)
 	channel := formatChannel(config.ChannelInfo{Mid: mid, Name: authorName})

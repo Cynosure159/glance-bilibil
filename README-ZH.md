@@ -126,6 +126,7 @@ docker run -d \
   - `limit`: 显示视频数量 (默认: 25)。
   - `style`: 显示样式: `horizontal-cards` (默认), `grid-cards`, `vertical-list`。
   - `mid`: 临时指定单个 UP 主 MID 进行过滤。
+  - `cache`: 请求缓存有效期（秒），默认 300。过期时立即返回旧缓存并后台刷新；设置为 0 时每次请求都触发后台刷新。
   - `collapse-after`: 垂直列表在 N 个项目后折叠 (默认: 7)。
   - `collapse-after-rows`: 网格布局在 N 行后折叠 (默认: 4)。
 - `GET /json` : 聚合后的视频原始数据 (JSON)

@@ -131,6 +131,7 @@ Add the extension to your `glance.yml`:
   - `limit`: Number of videos to display (default: 25).
   - `style`: Visual style: `horizontal-cards` (default), `grid-cards`, `vertical-list`.
   - `mid`: Temporarily filter by a specific UP master MID.
+  - `cache`: Request cache TTL in seconds (default: 300). Expired entries are returned immediately and refreshed in the background; 0 triggers a refresh on every request.
   - `collapse-after`: Collapse vertical list after N items (default: 7).
   - `collapse-after-rows`: Collapse grid after N rows (default: 4).
 - `GET /json` : Aggregated video data (JSON)
